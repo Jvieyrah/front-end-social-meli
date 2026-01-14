@@ -1,70 +1,115 @@
-# Getting Started with Create React App
+# Front-end Social Meli
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Aplicação front-end (React) do **Social Meli**, com:
 
-## Available Scripts
+- **Seleção de usuário** para simular autenticação (sem login).
+- **Follow/Unfollow** de usuários.
+- **Feed de publicações** e **Produtos em promoção**.
+- **Criação de publicação** normal e promocional com validação.
+- **Ordenação** (A-Z / Z-A e data) via query param `order`.
 
-In the project directory, you can run:
+---
 
-### `npm start`
+## Requisitos
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+- Node.js (recomendado: LTS)
+- npm
+- Back-end rodando (API do Social Meli)
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+---
 
-### `npm test`
+## Configuração
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### Variáveis de ambiente
 
-### `npm run build`
+Crie um arquivo `.env` na raiz do projeto (mesmo nível do `package.json`) com:
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+```bash
+REACT_APP_BASE_URL=http://localhost:8080
+```
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+Se você não configurar, o app usa o fallback `http://localhost:8080`.
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+---
 
-### `npm run eject`
+## Como rodar
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+Instalar dependências:
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+```bash
+npm install
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+Rodar em desenvolvimento:
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+```bash
+npm start
+```
 
-## Learn More
+A aplicação ficará disponível em:
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+- `http://localhost:3000`
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+Build de produção:
 
-### Code Splitting
+```bash
+npm run build
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+---
 
-### Analyzing the Bundle Size
+## Rotas
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+- **`/`**
+  - Home (lista de usuários + seguir/deixar de seguir)
+- **`/quem-me-segue`**
+  - Seguidores do usuário selecionado
+  - Ordenação A-Z / Z-A
+  - Follow/Unfollow usando a mesma lógica da Home
+- **`/quem-eu-sigo`**
+  - Lista de usuários seguidos
+  - Ordenação A-Z / Z-A
+  - Unfollow com recarregamento mantendo ordenação
+- **`/feed-de-publicacoes`**
+  - Feed de posts de usuários seguidos
+  - Ordenação por data (`date_asc` / `date_desc`)
+  - Like/Unlike com atualização otimista
+- **`/produtos-em-promocao`**
+  - Lista de promo posts
+  - Like/Unlike e botão de recarregar
+- **`/criar-publicacao`**
+  - Formulário para criar post normal ou promocional
 
-### Making a Progressive Web App
+---
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+## Integração com a API (resumo)
 
-### Advanced Configuration
+As chamadas ficam em `src/services/api.js` e o estado compartilhado em `src/services/UserContext.js`.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+Principais endpoints utilizados:
 
-### Deployment
+- **Usuários**
+  - `GET /users/top`
+  - `GET /users/{id}/followers/list?order=name_asc|name_desc`
+  - `GET /users/{id}/followed/list?order=name_asc|name_desc`
+  - `POST /users/{follower}/follow/{followed}`
+  - `POST /users/{follower}/unfollow/{followed}`
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+- **Posts**
+  - `GET /products/followed/{userId}/list?order=date_asc|date_desc`
+  - `POST /products/{postId}/like/{userId}`
+  - `POST /products/{postId}/unlike/{userId}`
+  - `POST /products/publish`
+  - `POST /products/promo-pub`
 
-### `npm run build` fails to minify
+- **Promo posts**
+  - `GET /products/promo-pub/list?userId={userId}`
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+---
+
+## Observações importantes
+
+- A tela **Criar publicação** força o `userId` do payload a ser sempre o **usuário selecionado**.
+- Erros vindos da API são exibidos usando o campo `message` do JSON de erro.
+- Algumas respostas `201` podem vir sem body; o front trata parse de JSON de forma segura.
+

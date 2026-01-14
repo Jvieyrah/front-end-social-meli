@@ -4,12 +4,11 @@ import Navigation from './components/Navigation';
 import Home from './pages/Home';
 import UserSelector from './components/UserSelector';
 import { UserProvider } from './services/UserContext';
-
 import QuemMeSegue from './pages/QuemMeSegue';
 import QuemEuSigo from './pages/QuemEuSigo';
 import FeedDePublicacoes from './pages/FeedDePublicacoes';
-// import CriarPublicacao from './pages/CriarPublicacao';
-// import ProdutosEmPromocao from './pages/ProdutosEmPromocao';
+import CriarPublicacao from './pages/CriarPublicacao';
+import ProdutosEmPromocao from './pages/ProdutosEmPromocao';
 
 const App = () => {
  
@@ -24,6 +23,8 @@ const App = () => {
           <Route path="/quem-me-segue" element={<QuemMeSegue />} />
           <Route path="/quem-eu-sigo" element={<QuemEuSigo />} />
           <Route path="/feed-de-publicacoes" element={<FeedDePublicacoes />} />
+          <Route path="/criar-publicacao" element={<CriarPublicacao />} />
+          <Route path="/produtos-em-promocao" element={<ProdutosEmPromocao />} />
         </Routes>
       </Router>
     </UserProvider>

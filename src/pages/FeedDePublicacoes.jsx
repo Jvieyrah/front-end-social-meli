@@ -15,12 +15,22 @@ const FeedDePublicacoes = () => {
   const [likedByPostId, setLikedByPostId] = useState({});
   const [likesCountByPostId, setLikesCountByPostId] = useState({});
   const [toggleLoadingByPostId, setToggleLoadingByPostId] = useState({});
+  const [sortDirection, setSortDirection] = useState('desc');
 
   const canLoad = Boolean(selectedUser?.id);
 
   const posts = useMemo(() => {
     return Array.isArray(followedPosts) ? followedPosts : [];
   }, [followedPosts]);
+
+  useEffect(() => {
+    if (!selectedUser?.id) return;
+    reloadFollowedPosts(selectedUser.id, `date_${sortDirection}`).catch(() => {});
+  }, [selectedUser?.id, sortDirection]);
+
+  const toggleSortDirection = () => {
+    setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+  };
 
   useEffect(() => {
     setLikesCountByPostId((prev) => {
@@ -78,22 +88,41 @@ const FeedDePublicacoes = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
         <h2 style={{ margin: 0, fontSize: 18 }}>Feed de publicações</h2>
 
-        <button
-          type="button"
-          disabled={!canLoad || followedPostsLoading}
-          onClick={() => reloadFollowedPosts()}
-          style={{
-            border: '1px solid #e6e6e6',
-            background: '#fff',
-            borderRadius: 10,
-            padding: '8px 12px',
-            cursor: !canLoad || followedPostsLoading ? 'not-allowed' : 'pointer',
-            opacity: !canLoad || followedPostsLoading ? 0.6 : 1,
-            fontWeight: 600,
-          }}
-        >
-          Recarregar
-        </button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button
+            type="button"
+            disabled={!canLoad || followedPostsLoading}
+            onClick={toggleSortDirection}
+            style={{
+              border: '1px solid #e6e6e6',
+              background: '#fff',
+              borderRadius: 10,
+              padding: '8px 12px',
+              cursor: !canLoad || followedPostsLoading ? 'not-allowed' : 'pointer',
+              opacity: !canLoad || followedPostsLoading ? 0.6 : 1,
+              fontWeight: 600,
+            }}
+          >
+            Data: {sortDirection === 'asc' ? 'mais antigas' : 'mais novas'}
+          </button>
+
+          <button
+            type="button"
+            disabled={!canLoad || followedPostsLoading}
+            onClick={() => reloadFollowedPosts(selectedUser?.id, `date_${sortDirection}`)}
+            style={{
+              border: '1px solid #e6e6e6',
+              background: '#fff',
+              borderRadius: 10,
+              padding: '8px 12px',
+              cursor: !canLoad || followedPostsLoading ? 'not-allowed' : 'pointer',
+              opacity: !canLoad || followedPostsLoading ? 0.6 : 1,
+              fontWeight: 600,
+            }}
+          >
+            Recarregar
+          </button>
+        </div>
       </div>
 
       {!canLoad && (

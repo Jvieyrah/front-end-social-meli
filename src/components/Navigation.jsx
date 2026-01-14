@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 
+
 const Navigation = () => {
   const [isOpen, setIsOpen] = useState(false);
-
+  const logo = process.env.PUBLIC_URL + '/logomeli.png';
   const toggleMenu = () => setIsOpen((prev) => !prev);
 
   return (
@@ -24,7 +25,41 @@ const Navigation = () => {
           boxSizing: 'border-box',
         }}
       >
-        <div style={{ fontSize: 14, fontWeight: 600 }}>Menu</div>
+        <Link
+          to="/"
+          onClick={() => setIsOpen(false)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            textDecoration: 'none',
+            color: '#111',
+            minWidth: 0,
+          }}
+        >
+          <img
+            src={logo}
+            alt="Logo"
+            style={{
+              width: 28,
+              height: 28,
+              objectFit: 'contain',
+              display: 'block',
+            }}
+          />
+          <span
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              letterSpacing: 0.2,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            Social Meli
+          </span>
+        </Link>
 
         <button
           type="button"

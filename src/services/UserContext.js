@@ -1,6 +1,18 @@
 import React, { createContext, useEffect, useState } from 'react';
 
-import { follow, getFollowedPosts, getFollowersByUserId, getFollowingByUserId, getTopUsers } from './api';
+import {
+  createPost,
+  createPromoPost,
+  follow,
+  getFollowedPosts,
+  getFollowedPostsOrdered,
+  getPromoPosts,
+  getFollowersByUserId,
+  getFollowersByUserIdOrdered,
+  getFollowingByUserId,
+  getFollowingByUserIdOrdered,
+  getTopUsers,
+} from './api';
 
 export const UserContext = createContext();
 
@@ -21,6 +33,20 @@ export const UserProvider = ({ children }) => {
   const [followedPosts, setFollowedPosts] = useState([]);
   const [followedPostsLoading, setFollowedPostsLoading] = useState(false);
   const [followedPostsError, setFollowedPostsError] = useState(null);
+
+  const [promoPosts, setPromoPosts] = useState([]);
+  const [promoPostsLoading, setPromoPostsLoading] = useState(false);
+  const [promoPostsError, setPromoPostsError] = useState(null);
+
+  const [createPublicationLoading, setCreatePublicationLoading] = useState(false);
+  const [createPublicationError, setCreatePublicationError] = useState(null);
+  const [createPublicationSuccess, setCreatePublicationSuccess] = useState(false);
+
+  const resetCreatePublicationState = () => {
+    setCreatePublicationLoading(false);
+    setCreatePublicationError(null);
+    setCreatePublicationSuccess(false);
+  };
 
   const reloadUsers = async () => {
     setUsersLoading(true);
@@ -51,7 +77,46 @@ export const UserProvider = ({ children }) => {
     }
   };
 
-  const reloadFollowersUsers = async (userIdParam) => {
+  const createPublication = async (payload) => {
+    setCreatePublicationLoading(true);
+    setCreatePublicationError(null);
+    setCreatePublicationSuccess(false);
+
+    const selectedUserId = selectedUser?.id;
+    if (!selectedUserId) {
+      setCreatePublicationLoading(false);
+      setCreatePublicationError('Selecione um usuário antes de publicar');
+      throw new Error('Selecione um usuário antes de publicar');
+    }
+
+    if (payload?.userId != null && Number(payload.userId) !== Number(selectedUserId)) {
+      setCreatePublicationLoading(false);
+      setCreatePublicationError('Não é permitido publicar por outro usuário');
+      throw new Error('Não é permitido publicar por outro usuário');
+    }
+
+    const normalizedPayload = {
+      ...payload,
+      userId: selectedUserId,
+    };
+
+    try {
+      const result = normalizedPayload?.hasPromo
+        ? await createPromoPost(normalizedPayload)
+        : await createPost(normalizedPayload);
+
+      setCreatePublicationSuccess(true);
+      await Promise.all([reloadFollowedPosts(), reloadPromoPosts()]);
+      return result;
+    } catch (err) {
+      setCreatePublicationError(err?.message || 'Erro ao criar publicação');
+      throw err;
+    } finally {
+      setCreatePublicationLoading(false);
+    }
+  };
+
+  const reloadFollowersUsers = async (userIdParam, orderParam) => {
     const userId = userIdParam ?? selectedUser?.id;
     if (!userId) {
       setFollowersUsers([]);
@@ -64,7 +129,9 @@ export const UserProvider = ({ children }) => {
     setFollowersUsersError(null);
 
     try {
-      const data = await getFollowersByUserId(userId);
+      const data = orderParam
+        ? await getFollowersByUserIdOrdered(userId, orderParam)
+        : await getFollowersByUserId(userId);
 
       const normalizedUsers =
         (Array.isArray(data?.followers) && data.followers) ||
@@ -97,7 +164,7 @@ export const UserProvider = ({ children }) => {
     await Promise.all([reloadFollowersUsers(followerId), reloadFollowingUsers(followerId)]);
   };
 
-  const reloadFollowingUsers = async (userIdParam) => {
+  const reloadFollowingUsers = async (userIdParam, orderParam) => {
     const userId = userIdParam ?? selectedUser?.id;
     if (!userId) {
       setFollowingUsers([]);
@@ -110,7 +177,9 @@ export const UserProvider = ({ children }) => {
     setFollowingUsersError(null);
 
     try {
-      const data = await getFollowingByUserId(userId);
+      const data = orderParam
+        ? await getFollowingByUserIdOrdered(userId, orderParam)
+        : await getFollowingByUserId(userId);
 
       const normalizedUsers =
         (Array.isArray(data) && data) ||
@@ -135,7 +204,7 @@ export const UserProvider = ({ children }) => {
     }
   };
 
-  const reloadFollowedPosts = async (userIdParam) => {
+  const reloadFollowedPosts = async (userIdParam, orderParam) => {
     const userId = userIdParam ?? selectedUser?.id;
     if (!userId) {
       setFollowedPosts([]);
@@ -148,7 +217,9 @@ export const UserProvider = ({ children }) => {
     setFollowedPostsError(null);
 
     try {
-      const data = await getFollowedPosts(userId);
+      const data = orderParam
+        ? await getFollowedPostsOrdered(userId, orderParam)
+        : await getFollowedPosts(userId);
 
       const normalizedPosts =
         (Array.isArray(data?.posts) && data.posts) ||
@@ -179,6 +250,37 @@ export const UserProvider = ({ children }) => {
     }
   };
 
+  const reloadPromoPosts = async (userIdParam) => {
+    const userId = userIdParam ?? selectedUser?.id;
+    if (!userId) {
+      setPromoPosts([]);
+      setPromoPostsLoading(false);
+      setPromoPostsError(null);
+      return;
+    }
+
+    setPromoPostsLoading(true);
+    setPromoPostsError(null);
+
+    try {
+      const data = await getPromoPosts(userId);
+
+      const normalizedPosts =
+        (Array.isArray(data?.posts) && data.posts) ||
+        (Array.isArray(data) && data) ||
+        (Array.isArray(data?.data) && data.data) ||
+        (Array.isArray(data?.content) && data.content) ||
+        [];
+
+      setPromoPosts(normalizedPosts);
+    } catch (err) {
+      setPromoPosts([]);
+      setPromoPostsError(err?.message || 'Erro ao carregar promo posts');
+    } finally {
+      setPromoPostsLoading(false);
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
 
@@ -203,6 +305,10 @@ export const UserProvider = ({ children }) => {
     reloadFollowedPosts().catch(() => {});
   }, [selectedUser?.id]);
 
+  useEffect(() => {
+    reloadPromoPosts().catch(() => {});
+  }, [selectedUser?.id]);
+
   return (
     <UserContext.Provider
       value={{
@@ -224,6 +330,15 @@ export const UserProvider = ({ children }) => {
         followedPostsLoading,
         followedPostsError,
         reloadFollowedPosts,
+        promoPosts,
+        promoPostsLoading,
+        promoPostsError,
+        reloadPromoPosts,
+        createPublication,
+        createPublicationLoading,
+        createPublicationError,
+        createPublicationSuccess,
+        resetCreatePublicationState,
         followUser,
       }}
     >
