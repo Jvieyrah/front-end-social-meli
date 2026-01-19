@@ -2,6 +2,7 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { UserContext } from '../services/UserContext';
 import { PRODUCT_CATEGORIES } from '../constants/productCategories';
+import { getProductById } from '../services/api';
 
 const parseToIsoDate = (value) => {
   const raw = String(value ?? '').trim();
@@ -57,8 +58,8 @@ const CriarPublicacao = () => {
 
   const [form, setForm] = useState({
     date: '',
-    product_id: '',
-    product_name: '',
+    productId: '',
+    productName: '',
     type: '',
     brand: '',
     color: '',
@@ -72,14 +73,96 @@ const CriarPublicacao = () => {
   const [touched, setTouched] = useState({});
   const [submitError, setSubmitError] = useState(null);
 
+  const [productLookupLoading, setProductLookupLoading] = useState(false);
+  const [productLookupError, setProductLookupError] = useState(null);
+  const [lastLoadedProductId, setLastLoadedProductId] = useState(null);
+
   useEffect(() => {
     resetCreatePublicationState?.();
     setSubmitError(null);
+
+    setProductLookupLoading(false);
+    setProductLookupError(null);
+    setLastLoadedProductId(null);
 
     return () => {
       resetCreatePublicationState?.();
     };
   }, []);
+
+  useEffect(() => {
+    const raw = String(form.productId ?? '').trim();
+    const productId = Number(raw);
+
+    setProductLookupError(null);
+
+    let didCancel = false;
+
+    if (!raw) {
+      setProductLookupLoading(false);
+      setLastLoadedProductId(null);
+      return;
+    }
+
+    if (Number.isNaN(productId) || productId <= 0) {
+      setProductLookupLoading(false);
+      setLastLoadedProductId(null);
+      return;
+    }
+
+    if (lastLoadedProductId != null && Number(lastLoadedProductId) === productId) return;
+
+    setProductLookupLoading(true);
+    const timeoutId = window.setTimeout(() => {
+      getProductById(productId)
+        .then((data) => {
+          if (didCancel) return;
+
+          setForm((prev) => {
+            const shouldUpdate = (key) => !touched?.[key] || !String(prev?.[key] ?? '').trim();
+
+            return {
+              ...prev,
+              productName: shouldUpdate('productName')
+                ? (data?.productName ?? prev.productName)
+                : prev.productName,
+              type: shouldUpdate('type') ? (data?.type ?? prev.type) : prev.type,
+              brand: shouldUpdate('brand') ? (data?.brand ?? prev.brand) : prev.brand,
+              color: shouldUpdate('color') ? (data?.color ?? prev.color) : prev.color,
+              notes: shouldUpdate('notes') ? (data?.notes ?? prev.notes) : prev.notes,
+            };
+          });
+
+          setLastLoadedProductId(productId);
+          setProductLookupError(null);
+        })
+        .catch(() => {
+          if (didCancel) return;
+          setProductLookupError('Produto não encontrado. Preencha os dados manualmente.');
+          setLastLoadedProductId(null);
+        })
+        .finally(() => {
+          if (didCancel) return;
+          setProductLookupLoading(false);
+        });
+    }, 450);
+
+    return () => {
+      didCancel = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [form.productId, lastLoadedProductId, touched]);
+
+  useEffect(() => {
+    if (!productLookupError) return;
+    const hasRequiredProductFields =
+      Boolean(String(form.productName ?? '').trim()) &&
+      Boolean(String(form.type ?? '').trim()) &&
+      Boolean(String(form.brand ?? '').trim()) &&
+      Boolean(String(form.color ?? '').trim());
+
+    if (hasRequiredProductFields) setProductLookupError(null);
+  }, [form.productName, form.type, form.brand, form.color, productLookupError]);
 
   const canLoad = Boolean(selectedUser?.id);
 
@@ -93,11 +176,11 @@ const CriarPublicacao = () => {
     if (!form.date) next.date = 'Data é obrigatória.';
     else if (!parseToIsoDate(form.date)) next.date = 'Data inválida. Use dd/mm/aaaa.';
 
-    const productIdNumber = Number(form.product_id);
-    if (!form.product_id) next.product_id = 'ID do produto é obrigatório.';
-    else if (Number.isNaN(productIdNumber) || productIdNumber <= 0) next.product_id = 'ID do produto inválido.';
+    const productIdNumber = Number(form.productId);
+    if (!form.productId) next.productId = 'ID do produto é obrigatório.';
+    else if (Number.isNaN(productIdNumber) || productIdNumber <= 0) next.productId = 'ID do produto inválido.';
 
-    if (!form.product_name?.trim()) next.product_name = 'Nome do produto é obrigatório.';
+    if (!form.productName?.trim()) next.productName = 'Nome do produto é obrigatório.';
     if (!form.type?.trim()) next.type = 'Tipo é obrigatório.';
     if (!form.brand?.trim()) next.brand = 'Marca é obrigatória.';
     if (!form.color?.trim()) next.color = 'Cor é obrigatória.';
@@ -126,6 +209,18 @@ const CriarPublicacao = () => {
 
   const setField = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+
+    if (
+      productLookupError &&
+      (key === 'productName' || key === 'type' || key === 'brand' || key === 'color' || key === 'notes')
+    ) {
+      setProductLookupError(null);
+    }
+  };
+
+  const handleProductIdChange = (e) => {
+    setField('productId', e.target.value);
+    setLastLoadedProductId(null);
   };
 
   const handleSubmit = async (e) => {
@@ -135,8 +230,8 @@ const CriarPublicacao = () => {
 
     setTouched({
       date: true,
-      product_id: true,
-      product_name: true,
+      productId: true,
+      productName: true,
       type: true,
       brand: true,
       color: true,
@@ -157,8 +252,8 @@ const CriarPublicacao = () => {
       userId: selectedUser.id,
       date: isoDate,
       product: {
-        product_id: Number(form.product_id),
-        product_name: form.product_name,
+        productId: Number(form.productId),
+        productName: form.productName,
         type: form.type,
         brand: form.brand,
         color: form.color,
@@ -178,8 +273,8 @@ const CriarPublicacao = () => {
       await createPublication(payload);
       setForm({
         date: '',
-        product_id: '',
-        product_name: '',
+        productId: '',
+        productName: '',
         type: '',
         brand: '',
         color: '',
@@ -191,6 +286,9 @@ const CriarPublicacao = () => {
       });
       setTouched({});
       setSubmitError(null);
+      setProductLookupError(null);
+      setProductLookupLoading(false);
+      setLastLoadedProductId(null);
     } catch (err) {
       setSubmitError(err?.message || 'Falha ao publicar.');
     }
@@ -212,6 +310,12 @@ const CriarPublicacao = () => {
   const publishErrorMessage = useMemo(() => {
     return formatApiErrorMessage(submitError || createPublicationError);
   }, [submitError, createPublicationError]);
+
+  const validationSummary = useMemo(() => {
+    const entries = Object.entries(errors);
+    if (entries.length === 0) return [];
+    return entries.slice(0, 3).map(([, message]) => message);
+  }, [errors]);
 
   return (
     <div style={{ padding: 16, maxWidth: 720, margin: '0 auto' }}>
@@ -300,7 +404,7 @@ const CriarPublicacao = () => {
 
         {form.hasPromo && (
           <div>
-            <div style={labelStyle}>Desconto (%)</div>
+            <div style={labelStyle}>Desconto (R$</div>
             <input
               type="number"
               value={form.discount}
@@ -321,27 +425,31 @@ const CriarPublicacao = () => {
               <div style={labelStyle}>ID do produto</div>
               <input
                 type="number"
-                value={form.product_id}
-                onChange={(e) => setField('product_id', e.target.value)}
-                onBlur={() => handleBlur('product_id')}
+                value={form.productId}
+                onChange={handleProductIdChange}
+                onBlur={() => handleBlur('productId')}
                 style={inputStyle}
                 disabled={createPublicationLoading}
               />
-              {touched.product_id && errors.product_id && <div style={errorTextStyle}>{errors.product_id}</div>}
+              {touched.productId && errors.productId && <div style={errorTextStyle}>{errors.productId}</div>}
+              {productLookupLoading && <div style={{ marginTop: 6, fontSize: 12, color: '#555' }}>Buscando produto...</div>}
+              {!productLookupLoading && productLookupError && (
+                <div style={{ marginTop: 6, fontSize: 12, color: '#b00020' }}>{productLookupError}</div>
+              )}
             </div>
 
             <div>
               <div style={labelStyle}>Nome</div>
               <input
                 type="text"
-                value={form.product_name}
-                onChange={(e) => setField('product_name', e.target.value)}
-                onBlur={() => handleBlur('product_name')}
+                value={form.productName}
+                onChange={(e) => setField('productName', e.target.value)}
+                onBlur={() => handleBlur('productName')}
                 style={inputStyle}
                 disabled={createPublicationLoading}
               />
-              {touched.product_name && errors.product_name && (
-                <div style={errorTextStyle}>{errors.product_name}</div>
+              {touched.productName && errors.productName && (
+                <div style={errorTextStyle}>{errors.productName}</div>
               )}
             </div>
           </div>
@@ -425,6 +533,12 @@ const CriarPublicacao = () => {
         >
           {createPublicationLoading ? 'Publicando...' : 'Publicar'}
         </button>
+
+        {!isValid && !createPublicationLoading && validationSummary.length > 0 && (
+          <div style={errorTextStyle}>
+            {validationSummary.join(' ')}
+          </div>
+        )}
       </form>
     </div>
   );

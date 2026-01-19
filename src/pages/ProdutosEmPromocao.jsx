@@ -1,27 +1,223 @@
 
-import React, { useContext, useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import PostCard from '../components/PostCard';
 import { UserContext } from '../services/UserContext';
-import { likePost, unlikePost } from '../services/api';
+import { getPromoPosts, likePost, unlikePost } from '../services/api';
 
 const ProdutosEmPromocao = () => {
   const {
     selectedUser,
-    promoPosts,
-    promoPostsLoading,
-    promoPostsError,
-    reloadPromoPosts,
   } = useContext(UserContext);
+
+  const [promoPosts, setPromoPosts] = useState([]);
+  const [promoPostsLoading, setPromoPostsLoading] = useState(false);
+  const [promoPostsLoadingMore, setPromoPostsLoadingMore] = useState(false);
+  const [promoPostsError, setPromoPostsError] = useState(null);
+  const [promoPostsPage, setPromoPostsPage] = useState(0);
+  const [promoPostsHasMore, setPromoPostsHasMore] = useState(true);
 
   const [likedByPostId, setLikedByPostId] = useState({});
   const [likesCountByPostId, setLikesCountByPostId] = useState({});
   const [toggleLoadingByPostId, setToggleLoadingByPostId] = useState({});
+
+  const pageSize = 4;
+
+  const promoPostsLoadingRef = useRef(false);
+  const promoPostsLoadingMoreRef = useRef(false);
+  const promoPostsHasMoreRef = useRef(true);
+  const promoPostsPageRef = useRef(0);
+  const selectedUserIdRef = useRef(selectedUser?.id);
+  const scrollTickingRef = useRef(false);
 
   const canLoad = Boolean(selectedUser?.id);
 
   const posts = useMemo(() => {
     return Array.isArray(promoPosts) ? promoPosts : [];
   }, [promoPosts]);
+
+  useEffect(() => {
+    if (!selectedUser?.id) {
+      setPromoPosts([]);
+      setPromoPostsError(null);
+      setPromoPostsLoading(false);
+      setPromoPostsLoadingMore(false);
+      setPromoPostsPage(0);
+      setPromoPostsHasMore(true);
+
+      promoPostsLoadingRef.current = false;
+      promoPostsLoadingMoreRef.current = false;
+      promoPostsHasMoreRef.current = true;
+      promoPostsPageRef.current = 0;
+      selectedUserIdRef.current = null;
+      return;
+    }
+
+    selectedUserIdRef.current = selectedUser.id;
+
+    let isMounted = true;
+    const loadFirstPage = async () => {
+      setPromoPostsLoading(true);
+      setPromoPostsError(null);
+      setPromoPostsPage(0);
+      setPromoPostsHasMore(true);
+
+      promoPostsLoadingRef.current = true;
+      promoPostsLoadingMoreRef.current = false;
+      promoPostsHasMoreRef.current = true;
+      promoPostsPageRef.current = 0;
+
+      try {
+        const data = await getPromoPosts(selectedUser.id, 0, pageSize);
+
+        const normalizedPosts =
+          (Array.isArray(data?.posts) && data.posts) ||
+          (Array.isArray(data?.content) && data.content) ||
+          (Array.isArray(data) && data) ||
+          (Array.isArray(data?.data) && data.data) ||
+          [];
+
+        const isLast = Boolean(data?.last);
+
+        if (!isMounted) return;
+        setPromoPosts(normalizedPosts);
+        setPromoPostsHasMore(!isLast && normalizedPosts.length === pageSize);
+        promoPostsHasMoreRef.current = !isLast && normalizedPosts.length === pageSize;
+      } catch (err) {
+        if (!isMounted) return;
+        setPromoPosts([]);
+        setPromoPostsError(err?.message || 'Erro ao carregar posts');
+        setPromoPostsHasMore(false);
+        promoPostsHasMoreRef.current = false;
+      } finally {
+        if (!isMounted) return;
+        setPromoPostsLoading(false);
+        promoPostsLoadingRef.current = false;
+      }
+    };
+
+    loadFirstPage().catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedUser?.id]);
+
+  const reloadPosts = async () => {
+    if (!selectedUserIdRef.current) return;
+    if (promoPostsLoadingRef.current) return;
+
+    setPromoPostsLoading(true);
+    setPromoPostsError(null);
+    setPromoPostsPage(0);
+    setPromoPostsHasMore(true);
+
+    promoPostsLoadingRef.current = true;
+    promoPostsLoadingMoreRef.current = false;
+    promoPostsHasMoreRef.current = true;
+    promoPostsPageRef.current = 0;
+
+    try {
+      const data = await getPromoPosts(selectedUserIdRef.current, 0, pageSize);
+
+      const normalizedPosts =
+        (Array.isArray(data?.posts) && data.posts) ||
+        (Array.isArray(data?.content) && data.content) ||
+        (Array.isArray(data) && data) ||
+        (Array.isArray(data?.data) && data.data) ||
+        [];
+
+      const isLast = Boolean(data?.last);
+
+      setPromoPosts(normalizedPosts);
+      setPromoPostsHasMore(!isLast && normalizedPosts.length === pageSize);
+      promoPostsHasMoreRef.current = !isLast && normalizedPosts.length === pageSize;
+    } catch (err) {
+      setPromoPosts([]);
+      setPromoPostsError(err?.message || 'Erro ao carregar posts');
+      setPromoPostsHasMore(false);
+      promoPostsHasMoreRef.current = false;
+    } finally {
+      setPromoPostsLoading(false);
+      promoPostsLoadingRef.current = false;
+    }
+  };
+
+  const loadMorePosts = async () => {
+    const selectedId = selectedUserIdRef.current;
+    if (!selectedId) return;
+    if (promoPostsLoadingRef.current || promoPostsLoadingMoreRef.current) return;
+    if (!promoPostsHasMoreRef.current) return;
+
+    const nextPage = promoPostsPageRef.current + 1;
+
+    promoPostsLoadingMoreRef.current = true;
+    setPromoPostsLoadingMore(true);
+    setPromoPostsError(null);
+
+    try {
+      const data = await getPromoPosts(selectedId, nextPage, pageSize);
+
+      const normalizedPosts =
+        (Array.isArray(data?.posts) && data.posts) ||
+        (Array.isArray(data?.content) && data.content) ||
+        (Array.isArray(data) && data) ||
+        (Array.isArray(data?.data) && data.data) ||
+        [];
+
+      const isLast = Boolean(data?.last);
+
+      setPromoPosts((prev) => {
+        const prevArr = Array.isArray(prev) ? prev : [];
+        const seen = new Set(prevArr.map((p) => p?.postId ?? `${p?.userId}-${p?.date}`));
+        const next = normalizedPosts.filter(
+          (p) => !seen.has(p?.postId ?? `${p?.userId}-${p?.date}`)
+        );
+        return [...prevArr, ...next];
+      });
+
+      setPromoPostsPage(nextPage);
+      setPromoPostsHasMore(!isLast && normalizedPosts.length === pageSize);
+
+      promoPostsPageRef.current = nextPage;
+      promoPostsHasMoreRef.current = !isLast && normalizedPosts.length === pageSize;
+    } catch (err) {
+      setPromoPostsError(err?.message || 'Erro ao carregar mais posts');
+      setPromoPostsHasMore(false);
+      promoPostsHasMoreRef.current = false;
+    } finally {
+      setPromoPostsLoadingMore(false);
+      promoPostsLoadingMoreRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    if (!canLoad) return;
+
+    const onScroll = () => {
+      if (scrollTickingRef.current) return;
+      scrollTickingRef.current = true;
+
+      window.requestAnimationFrame(() => {
+        try {
+          if (window.scrollY <= 0) return;
+
+          const thresholdPx = 220;
+          const scrolledToBottom =
+            window.innerHeight + window.scrollY >=
+            document.documentElement.scrollHeight - thresholdPx;
+
+          if (scrolledToBottom) {
+            loadMorePosts().catch(() => {});
+          }
+        } finally {
+          scrollTickingRef.current = false;
+        }
+      });
+    };
+
+    window.addEventListener('scroll', onScroll);
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [canLoad]);
 
   useEffect(() => {
     setLikesCountByPostId((prev) => {
@@ -81,7 +277,7 @@ const ProdutosEmPromocao = () => {
         <button
           type="button"
           disabled={!canLoad || promoPostsLoading}
-          onClick={() => reloadPromoPosts(selectedUser?.id)}
+          onClick={() => reloadPosts()}
           style={{
             border: '1px solid #e6e6e6',
             background: '#fff',
@@ -128,6 +324,8 @@ const ProdutosEmPromocao = () => {
               onToggleLike={() => toggleLike(p.postId)}
             />
           ))}
+
+          {promoPostsLoadingMore && <div>Carregando mais...</div>}
         </div>
       )}
     </div>

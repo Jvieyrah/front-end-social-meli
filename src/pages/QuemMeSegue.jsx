@@ -1,24 +1,36 @@
 
-import React, { useContext, useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import UserCard from '../components/UserCard';
 import { UserContext } from '../services/UserContext';
-import { follow, unfollow } from '../services/api';
+import { follow, getFollowersByUserIdOrdered, unfollow } from '../services/api';
 
 const QuemMeSegue = () => {
   const {
     selectedUser,
-    followersUsers,
-    followersUsersLoading,
-    followersUsersError,
-    reloadFollowersUsers,
     followingUsers,
-    reloadFollowingUsers,
   } = useContext(UserContext);
 
   const [followingByUserId, setFollowingByUserId] = useState({});
   const [toggleLoadingByUserId, setToggleLoadingByUserId] = useState({});
   const [sortDirection, setSortDirection] = useState('asc');
+
+  const [followersUsers, setFollowersUsers] = useState([]);
+  const [followersUsersError, setFollowersUsersError] = useState(null);
+  const [followersUsersLoading, setFollowersUsersLoading] = useState(false);
+  const [followersUsersLoadingMore, setFollowersUsersLoadingMore] = useState(false);
+  const [followersUsersPage, setFollowersUsersPage] = useState(0);
+  const [followersUsersHasMore, setFollowersUsersHasMore] = useState(true);
+
+  const pageSize = 10;
+
+  const followersUsersLoadingRef = useRef(false);
+  const followersUsersLoadingMoreRef = useRef(false);
+  const followersUsersHasMoreRef = useRef(true);
+  const followersUsersPageRef = useRef(0);
+  const sortDirectionRef = useRef(sortDirection);
+  const selectedUserIdRef = useRef(selectedUser?.id);
+  const scrollTickingRef = useRef(false);
 
   const canLoad = Boolean(selectedUser?.id);
   const canToggle = Boolean(selectedUser?.id);
@@ -42,16 +54,168 @@ const QuemMeSegue = () => {
   }, [followersUsers, followingByUserId]);
 
   useEffect(() => {
-    if (!selectedUser?.id) return;
-    if (!reloadFollowersUsers) return;
-    reloadFollowersUsers(selectedUser.id, `name_${sortDirection}`).catch(() => {});
+    if (!selectedUser?.id) {
+      setFollowersUsers([]);
+      setFollowersUsersError(null);
+      setFollowersUsersLoading(false);
+      setFollowersUsersLoadingMore(false);
+      setFollowersUsersPage(0);
+      setFollowersUsersHasMore(true);
+
+      followersUsersLoadingRef.current = false;
+      followersUsersLoadingMoreRef.current = false;
+      followersUsersHasMoreRef.current = true;
+      followersUsersPageRef.current = 0;
+      selectedUserIdRef.current = null;
+      return;
+    }
+
+    selectedUserIdRef.current = selectedUser.id;
+    sortDirectionRef.current = sortDirection;
+
+    let isMounted = true;
+    const loadFirstPage = async () => {
+      setFollowersUsersLoading(true);
+      setFollowersUsersError(null);
+      setFollowersUsersPage(0);
+      setFollowersUsersHasMore(true);
+
+      followersUsersLoadingRef.current = true;
+      followersUsersLoadingMoreRef.current = false;
+      followersUsersHasMoreRef.current = true;
+      followersUsersPageRef.current = 0;
+
+      try {
+        const order = `name_${sortDirection}`;
+        const data = await getFollowersByUserIdOrdered(selectedUser.id, order, 0, pageSize);
+
+        const normalizedUsersRaw =
+          (Array.isArray(data?.followers) && data.followers) ||
+          (Array.isArray(data?.content) && data.content) ||
+          (Array.isArray(data) && data) ||
+          (Array.isArray(data?.users) && data.users) ||
+          (Array.isArray(data?.data) && data.data) ||
+          [];
+
+        const normalizedUsers = normalizedUsersRaw.map((u) => ({
+          ...u,
+          id: u?.id ?? u?.userId,
+          name: u?.name ?? u?.userName,
+        }));
+
+        const isLast = Boolean(data?.last);
+
+        if (!isMounted) return;
+        setFollowersUsers(normalizedUsers);
+        setFollowersUsersHasMore(!isLast && normalizedUsers.length === pageSize);
+
+        followersUsersHasMoreRef.current = !isLast && normalizedUsers.length === pageSize;
+      } catch (err) {
+        if (!isMounted) return;
+        setFollowersUsers([]);
+        setFollowersUsersError(err?.message || 'Erro ao carregar seguidores');
+        setFollowersUsersHasMore(false);
+
+        followersUsersHasMoreRef.current = false;
+      } finally {
+        if (!isMounted) return;
+        setFollowersUsersLoading(false);
+
+        followersUsersLoadingRef.current = false;
+      }
+    };
+
+    loadFirstPage().catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
   }, [selectedUser?.id, sortDirection]);
 
+  const loadMoreFollowers = async () => {
+    const selectedId = selectedUserIdRef.current;
+    if (!selectedId) return;
+    if (followersUsersLoadingRef.current || followersUsersLoadingMoreRef.current) return;
+    if (!followersUsersHasMoreRef.current) return;
+
+    const nextPage = followersUsersPageRef.current + 1;
+
+    followersUsersLoadingMoreRef.current = true;
+    setFollowersUsersLoadingMore(true);
+    setFollowersUsersError(null);
+
+    try {
+      const order = `name_${sortDirectionRef.current}`;
+      const data = await getFollowersByUserIdOrdered(selectedId, order, nextPage, pageSize);
+
+      const normalizedUsersRaw =
+        (Array.isArray(data?.followers) && data.followers) ||
+        (Array.isArray(data?.content) && data.content) ||
+        (Array.isArray(data) && data) ||
+        (Array.isArray(data?.users) && data.users) ||
+        (Array.isArray(data?.data) && data.data) ||
+        [];
+
+      const normalizedUsers = normalizedUsersRaw.map((u) => ({
+        ...u,
+        id: u?.id ?? u?.userId,
+        name: u?.name ?? u?.userName,
+      }));
+
+      const isLast = Boolean(data?.last);
+
+      setFollowersUsers((prev) => {
+        const prevArr = Array.isArray(prev) ? prev : [];
+        const seen = new Set(prevArr.map((u) => u?.id));
+        const next = normalizedUsers.filter((u) => !seen.has(u?.id));
+        return [...prevArr, ...next];
+      });
+
+      setFollowersUsersPage(nextPage);
+      setFollowersUsersHasMore(!isLast && normalizedUsers.length === pageSize);
+
+      followersUsersPageRef.current = nextPage;
+      followersUsersHasMoreRef.current = !isLast && normalizedUsers.length === pageSize;
+    } catch (err) {
+      setFollowersUsersError(err?.message || 'Erro ao carregar mais seguidores');
+      setFollowersUsersHasMore(false);
+
+      followersUsersHasMoreRef.current = false;
+    } finally {
+      setFollowersUsersLoadingMore(false);
+
+      followersUsersLoadingMoreRef.current = false;
+    }
+  };
+
   useEffect(() => {
-    if (!selectedUser?.id) return;
-    if (!reloadFollowingUsers) return;
-    reloadFollowingUsers(selectedUser.id, `name_${sortDirection}`).catch(() => {});
-  }, [selectedUser?.id, sortDirection]);
+    if (!canLoad) return;
+
+    const onScroll = () => {
+      if (scrollTickingRef.current) return;
+      scrollTickingRef.current = true;
+
+      window.requestAnimationFrame(() => {
+        try {
+          if (window.scrollY <= 0) return;
+
+          const thresholdPx = 220;
+          const scrolledToBottom =
+            window.innerHeight + window.scrollY >=
+            document.documentElement.scrollHeight - thresholdPx;
+
+          if (scrolledToBottom) {
+            loadMoreFollowers().catch(() => {});
+          }
+        } finally {
+          scrollTickingRef.current = false;
+        }
+      });
+    };
+
+    window.addEventListener('scroll', onScroll);
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [canLoad]);
 
   const toggleSortDirection = () => {
     setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
@@ -73,10 +237,7 @@ const QuemMeSegue = () => {
         await follow(followerId, targetUserId);
       }
 
-      await Promise.all([
-        reloadFollowersUsers(followerId, `name_${sortDirection}`),
-        reloadFollowingUsers(followerId, `name_${sortDirection}`),
-      ]);
+      await reloadFollowingUsers(followerId, `name_${sortDirection}`);
 
       setFollowingByUserId((prev) => ({
         ...prev,
@@ -132,6 +293,8 @@ const QuemMeSegue = () => {
               {!canToggle && <p>Selecione um usuário para seguir/deixar de seguir</p>}
             </div>
           ))}
+
+          {followersUsersLoadingMore && <p>Carregando mais...</p>}
         </div>
       )}
     </div>

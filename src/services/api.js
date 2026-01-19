@@ -45,8 +45,8 @@ export async function getTopUsers() {
   return response.json();
 }
 
-export async function getFollowedPostsOrdered(userId, order) {
-  const queryString = buildQueryString({ order });
+export async function getFollowedPostsOrdered(userId, order, page, size) {
+  const queryString = buildQueryString({ order, page, size });
   const response = await fetch(`${baseUrl}/products/followed/${userId}/list${queryString}`);
 
   if (!response.ok) {
@@ -58,8 +58,8 @@ export async function getFollowedPostsOrdered(userId, order) {
   return response.json();
 }
 
-export async function getPromoPosts(userId) {
-  const queryString = buildQueryString({ userId });
+export async function getPromoPosts(userId, page, size) {
+  const queryString = buildQueryString({ userId, page, size });
   const response = await fetch(`${baseUrl}/products/promo-pub/list${queryString}`);
 
   if (!response.ok) {
@@ -71,8 +71,8 @@ export async function getPromoPosts(userId) {
   return response.json();
 }
 
-export async function getFollowersByUserIdOrdered(userId, order) {
-  const queryString = buildQueryString({ order });
+export async function getFollowersByUserIdOrdered(userId, order, page, size) {
+  const queryString = buildQueryString({ order, page, size });
   const response = await fetch(`${baseUrl}/users/${userId}/followers/list${queryString}`);
 
   if (!response.ok) {
@@ -126,6 +126,17 @@ export async function createPromoPost(payload) {
   return safeReadJson(response);
 }
 
+export async function getProductById(productId) {
+  const response = await fetch(`${baseUrl}/products/${productId}`);
+
+  if (!response.ok) {
+    const msg = await extractErrorMessage(response);
+    throw new Error(msg);
+  }
+
+  return safeReadJson(response);
+}
+
 export async function unfollow(follower, followed){
   const response = await fetch(`${baseUrl}/users/${follower}/unfollow/${followed}`,{
     method: 'POST',
@@ -143,8 +154,8 @@ export async function getFollowingByUserId(userId) {
   return response.json();
 }
 
-export async function getFollowingByUserIdOrdered(userId, order) {
-  const queryString = buildQueryString({ order });
+export async function getFollowingByUserIdOrdered(userId, order, page, size) {
+  const queryString = buildQueryString({ order, page, size });
   const response = await fetch(`${baseUrl}/users/${userId}/followed/list${queryString}`);
 
   if (!response.ok) {

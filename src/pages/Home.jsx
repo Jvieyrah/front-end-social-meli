@@ -11,11 +11,13 @@ const Home = () => {
   const canToggle = Boolean(selectedUser?.id);
 
   const usersWithFollowState = useMemo(() => {
-    return users.map((u) => ({
-      ...u,
-      isFollowing: Boolean(followingByUserId[u.id]),
-    }));
-  }, [users, followingByUserId]);
+    return users
+      .filter((u) => (selectedUser?.id ? u.id !== selectedUser.id : true))
+      .map((u) => ({
+        ...u,
+        isFollowing: Boolean(followingByUserId[u.id]),
+      }));
+  }, [users, followingByUserId, selectedUser?.id]);
 
   const toggleFollowing = async (targetUserId) => {
     if (!canToggle) return;

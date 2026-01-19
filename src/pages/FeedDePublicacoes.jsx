@@ -1,21 +1,34 @@
-import React, { useContext, useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import PostCard from '../components/PostCard';
 import { UserContext } from '../services/UserContext';
-import { likePost, unlikePost } from '../services/api';
+import { getFollowedPostsOrdered, likePost, unlikePost } from '../services/api';
 
 const FeedDePublicacoes = () => {
   const {
     selectedUser,
-    followedPosts,
-    followedPostsLoading,
-    followedPostsError,
-    reloadFollowedPosts,
   } = useContext(UserContext);
+
+  const [followedPosts, setFollowedPosts] = useState([]);
+  const [followedPostsLoading, setFollowedPostsLoading] = useState(false);
+  const [followedPostsLoadingMore, setFollowedPostsLoadingMore] = useState(false);
+  const [followedPostsError, setFollowedPostsError] = useState(null);
+  const [followedPostsPage, setFollowedPostsPage] = useState(0);
+  const [followedPostsHasMore, setFollowedPostsHasMore] = useState(true);
 
   const [likedByPostId, setLikedByPostId] = useState({});
   const [likesCountByPostId, setLikesCountByPostId] = useState({});
   const [toggleLoadingByPostId, setToggleLoadingByPostId] = useState({});
   const [sortDirection, setSortDirection] = useState('desc');
+
+  const pageSize = 4;
+
+  const followedPostsLoadingRef = useRef(false);
+  const followedPostsLoadingMoreRef = useRef(false);
+  const followedPostsHasMoreRef = useRef(true);
+  const followedPostsPageRef = useRef(0);
+  const sortDirectionRef = useRef(sortDirection);
+  const selectedUserIdRef = useRef(selectedUser?.id);
+  const scrollTickingRef = useRef(false);
 
   const canLoad = Boolean(selectedUser?.id);
 
@@ -24,9 +37,192 @@ const FeedDePublicacoes = () => {
   }, [followedPosts]);
 
   useEffect(() => {
-    if (!selectedUser?.id) return;
-    reloadFollowedPosts(selectedUser.id, `date_${sortDirection}`).catch(() => {});
+    if (!selectedUser?.id) {
+      setFollowedPosts([]);
+      setFollowedPostsError(null);
+      setFollowedPostsLoading(false);
+      setFollowedPostsLoadingMore(false);
+      setFollowedPostsPage(0);
+      setFollowedPostsHasMore(true);
+
+      followedPostsLoadingRef.current = false;
+      followedPostsLoadingMoreRef.current = false;
+      followedPostsHasMoreRef.current = true;
+      followedPostsPageRef.current = 0;
+      selectedUserIdRef.current = null;
+      return;
+    }
+
+    selectedUserIdRef.current = selectedUser.id;
+    sortDirectionRef.current = sortDirection;
+
+    let isMounted = true;
+    const loadFirstPage = async () => {
+      setFollowedPostsLoading(true);
+      setFollowedPostsError(null);
+      setFollowedPostsPage(0);
+      setFollowedPostsHasMore(true);
+
+      followedPostsLoadingRef.current = true;
+      followedPostsLoadingMoreRef.current = false;
+      followedPostsHasMoreRef.current = true;
+      followedPostsPageRef.current = 0;
+
+      try {
+        const order = `date_${sortDirection}`;
+        const data = await getFollowedPostsOrdered(selectedUser.id, order, 0, pageSize);
+
+        const normalizedPosts =
+          (Array.isArray(data?.posts) && data.posts) ||
+          (Array.isArray(data?.content) && data.content) ||
+          (Array.isArray(data) && data) ||
+          (Array.isArray(data?.data) && data.data) ||
+          [];
+
+        const isLast = Boolean(data?.last);
+
+        if (!isMounted) return;
+        setFollowedPosts(normalizedPosts);
+        setFollowedPostsHasMore(!isLast && normalizedPosts.length === pageSize);
+        followedPostsHasMoreRef.current = !isLast && normalizedPosts.length === pageSize;
+      } catch (err) {
+        if (!isMounted) return;
+        setFollowedPosts([]);
+        setFollowedPostsError(err?.message || 'Erro ao carregar posts');
+        setFollowedPostsHasMore(false);
+        followedPostsHasMoreRef.current = false;
+      } finally {
+        if (!isMounted) return;
+        setFollowedPostsLoading(false);
+        followedPostsLoadingRef.current = false;
+      }
+    };
+
+    loadFirstPage().catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
   }, [selectedUser?.id, sortDirection]);
+
+  const reloadPosts = async () => {
+    if (!selectedUserIdRef.current) return;
+    if (followedPostsLoadingRef.current) return;
+
+    setFollowedPostsLoading(true);
+    setFollowedPostsError(null);
+    setFollowedPostsPage(0);
+    setFollowedPostsHasMore(true);
+
+    followedPostsLoadingRef.current = true;
+    followedPostsLoadingMoreRef.current = false;
+    followedPostsHasMoreRef.current = true;
+    followedPostsPageRef.current = 0;
+
+    try {
+      const order = `date_${sortDirectionRef.current}`;
+      const data = await getFollowedPostsOrdered(selectedUserIdRef.current, order, 0, pageSize);
+
+      const normalizedPosts =
+        (Array.isArray(data?.posts) && data.posts) ||
+        (Array.isArray(data?.content) && data.content) ||
+        (Array.isArray(data) && data) ||
+        (Array.isArray(data?.data) && data.data) ||
+        [];
+
+      const isLast = Boolean(data?.last);
+
+      setFollowedPosts(normalizedPosts);
+      setFollowedPostsHasMore(!isLast && normalizedPosts.length === pageSize);
+      followedPostsHasMoreRef.current = !isLast && normalizedPosts.length === pageSize;
+    } catch (err) {
+      setFollowedPosts([]);
+      setFollowedPostsError(err?.message || 'Erro ao carregar posts');
+      setFollowedPostsHasMore(false);
+      followedPostsHasMoreRef.current = false;
+    } finally {
+      setFollowedPostsLoading(false);
+      followedPostsLoadingRef.current = false;
+    }
+  };
+
+  const loadMorePosts = async () => {
+    const selectedId = selectedUserIdRef.current;
+    if (!selectedId) return;
+    if (followedPostsLoadingRef.current || followedPostsLoadingMoreRef.current) return;
+    if (!followedPostsHasMoreRef.current) return;
+
+    const nextPage = followedPostsPageRef.current + 1;
+
+    followedPostsLoadingMoreRef.current = true;
+    setFollowedPostsLoadingMore(true);
+    setFollowedPostsError(null);
+
+    try {
+      const order = `date_${sortDirectionRef.current}`;
+      const data = await getFollowedPostsOrdered(selectedId, order, nextPage, pageSize);
+
+      const normalizedPosts =
+        (Array.isArray(data?.posts) && data.posts) ||
+        (Array.isArray(data?.content) && data.content) ||
+        (Array.isArray(data) && data) ||
+        (Array.isArray(data?.data) && data.data) ||
+        [];
+
+      const isLast = Boolean(data?.last);
+
+      setFollowedPosts((prev) => {
+        const prevArr = Array.isArray(prev) ? prev : [];
+        const seen = new Set(prevArr.map((p) => p?.postId ?? `${p?.userId}-${p?.date}`));
+        const next = normalizedPosts.filter(
+          (p) => !seen.has(p?.postId ?? `${p?.userId}-${p?.date}`)
+        );
+        return [...prevArr, ...next];
+      });
+
+      setFollowedPostsPage(nextPage);
+      setFollowedPostsHasMore(!isLast && normalizedPosts.length === pageSize);
+
+      followedPostsPageRef.current = nextPage;
+      followedPostsHasMoreRef.current = !isLast && normalizedPosts.length === pageSize;
+    } catch (err) {
+      setFollowedPostsError(err?.message || 'Erro ao carregar mais posts');
+      setFollowedPostsHasMore(false);
+      followedPostsHasMoreRef.current = false;
+    } finally {
+      setFollowedPostsLoadingMore(false);
+      followedPostsLoadingMoreRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    if (!canLoad) return;
+
+    const onScroll = () => {
+      if (scrollTickingRef.current) return;
+      scrollTickingRef.current = true;
+
+      window.requestAnimationFrame(() => {
+        try {
+          if (window.scrollY <= 0) return;
+
+          const thresholdPx = 220;
+          const scrolledToBottom =
+            window.innerHeight + window.scrollY >=
+            document.documentElement.scrollHeight - thresholdPx;
+
+          if (scrolledToBottom) {
+            loadMorePosts().catch(() => {});
+          }
+        } finally {
+          scrollTickingRef.current = false;
+        }
+      });
+    };
+
+    window.addEventListener('scroll', onScroll);
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [canLoad]);
 
   const toggleSortDirection = () => {
     setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
@@ -109,7 +305,7 @@ const FeedDePublicacoes = () => {
           <button
             type="button"
             disabled={!canLoad || followedPostsLoading}
-            onClick={() => reloadFollowedPosts(selectedUser?.id, `date_${sortDirection}`)}
+            onClick={() => reloadPosts()}
             style={{
               border: '1px solid #e6e6e6',
               background: '#fff',
@@ -157,6 +353,8 @@ const FeedDePublicacoes = () => {
               onToggleLike={() => toggleLike(p.postId)}
             />
           ))}
+
+          {followedPostsLoadingMore && <div>Carregando mais...</div>}
         </div>
       )}
     </div>

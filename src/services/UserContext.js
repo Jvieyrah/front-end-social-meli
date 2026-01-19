@@ -236,8 +236,8 @@ export const UserProvider = ({ children }) => {
             ...p,
             product: {
               ...product,
-              productId: product?.productId ?? product?.product_id,
-              productName: product?.productName ?? product?.product_name,
+              productId: product?.productId,
+              productName: product?.productName,
             },
           };
         })
